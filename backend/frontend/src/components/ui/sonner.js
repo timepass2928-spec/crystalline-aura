@@ -1,8 +1,11 @@
 import React from "react";
-import { Toaster as SonnerToaster } from "sonner";
 
-export const Toaster = (props) => {
-  return <SonnerToaster position="top-right" richColors {...props} />;
+export const Toaster = () => null;
+
+export const toast = {
+  success: (msg) => console.log("Success:", msg),
+  error: (msg) => console.error("Error:", msg),
+  info: (msg) => console.log("Info:", msg),
 };
 
 export default Toaster;
