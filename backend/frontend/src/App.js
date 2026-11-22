@@ -1,22 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { LogoMark } from "@/components/Logo";
+import { db } from "./firebase";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+} from "firebase/firestore";
 
-const STORAGE_KEY = "crystalline_aura_products_v1";
-
-const DEFAULT_PRODUCTS = [];
+const PRODUCTS_COLLECTION = "products";
 
 export default function App() {
-  const [products, setProducts] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (_) {}
-    return DEFAULT_PRODUCTS;
-  });
-
+  const [products, setProducts] = useState([]);
   const [view, setView] = useState("boutique"); // "boutique" | "login" | "atelier"
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("ALL"); // "ALL" | "CLOTHES" | "JEWELLERY"
@@ -32,6 +31,7 @@ export default function App() {
   const [filterAtelier, setFilterAtelier] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
     title: "",
     category: "CLOTHES",
@@ -41,18 +41,32 @@ export default function App() {
     url: "",
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
-    } catch (_) {}
-  }, [products]);
-
   const showToast = (msg) => {
     setBannerMsg(msg);
     setTimeout(() => {
       setBannerMsg((prev) => (prev === msg ? "" : prev));
     }, 3500);
   };
+
+  useEffect(() => {
+    const q = query(collection(db, PRODUCTS_COLLECTION), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+        setProducts(items);
+      },
+      (error) => {
+        console.error("Error loading products from Firestore:", error);
+        showToast("Could not load products from Firestore");
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const filteredBoutique = products.filter((item) => {
     const matchesCat = category === "ALL" || item.category === category;
@@ -104,12 +118,12 @@ export default function App() {
     setShowForm(true);
   };
 
-  const handleSaveProduct = (e) => {
+  const handleSaveProduct = async (e) => {
     e.preventDefault();
-    if (!form.title.trim()) return;
+    if (!form.title.trim() || isSaving) return;
 
+    setIsSaving(true);
     const cleanItem = {
-      id: editingId || `item-${Date.now()}`,
       title: form.title.trim(),
       category: form.category === "JEWELLERY" ? "JEWELLERY" : "CLOTHES",
       subtitle: form.subtitle.trim(),
@@ -118,21 +132,35 @@ export default function App() {
       url: form.url.trim(),
     };
 
-    if (editingId) {
-      setProducts((prev) => prev.map((p) => (p.id === editingId ? cleanItem : p)));
-      showToast("Product updated");
-    } else {
-      setProducts((prev) => [cleanItem, ...prev]);
-      showToast("Product added to collection");
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, PRODUCTS_COLLECTION, editingId), cleanItem);
+        showToast("Product updated");
+      } else {
+        await addDoc(collection(db, PRODUCTS_COLLECTION), {
+          ...cleanItem,
+          createdAt: Date.now(),
+        });
+        showToast("Product added to collection");
+      }
+      setShowForm(false);
+      setEditingId(null);
+    } catch (error) {
+      console.error("Error saving product to Firestore:", error);
+      showToast("Failed to save product");
+    } finally {
+      setIsSaving(false);
     }
-
-    setShowForm(false);
-    setEditingId(null);
   };
 
-  const handleDeleteProduct = (id) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    showToast("Product removed");
+  const handleDeleteProduct = async (id) => {
+    try {
+      await deleteDoc(doc(db, PRODUCTS_COLLECTION, id));
+      showToast("Product removed");
+    } catch (error) {
+      console.error("Error deleting product from Firestore:", error);
+      showToast("Failed to remove product");
+    }
   };
 
   const totalCount = products.length;
@@ -1102,6 +1130,7 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSaving}
                   style={{
                     padding: "10px 20px",
                     borderRadius: "999px",
@@ -1111,7 +1140,7 @@ export default function App() {
                     cursor: "pointer",
                   }}
                 >
-                  {editingId ? "Save Changes" : "Save Product"}
+                  {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save Product"}
                 </button>
               </div>
             </form>
