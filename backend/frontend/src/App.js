@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LogoMark } from "@/components/Logo";
+import { Logmark } from "./components/Logo";
 import { db } from "./firebase";
 import {
   addDoc,
@@ -13,1279 +13,650 @@ import {
 } from "firebase/firestore";
 
 const PRODUCTS_COLLECTION = "products";
+const MAX_STORED_IMAGE_CHARS = 750000;
+
+function readAndCompressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("Could not read image file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Invalid image file."));
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxSide = 900;
+        let { width, height } = img;
+
+        if (width > maxSide || height > maxSide) {
+          if (width >= height) {
+            height = Math.round((height * maxSide) / width);
+            width = maxSide;
+          } else {
+            width = Math.round((width * maxSide) / height);
+            height = maxSide;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.8;
+        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+
+        while (dataUrl.length > MAX_STORED_IMAGE_CHARS && quality > 0.35) {
+          quality -= 0.1;
+          dataUrl = canvas.toDataURL("image/jpeg", quality);
+        }
+
+        if (dataUrl.length > MAX_STORED_IMAGE_CHARS) {
+          reject(new Error("Image is still too large. Please pick a smaller photo."));
+          return;
+        }
+
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    backgroundColor: "#faf8f5",
+    color: "#1c1917",
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    padding: "16px",
+    boxSizing: "border-box",
+  },
+  container: {
+    maxWidth: "820px",
+    margin: "0 auto",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  topBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "20px",
+  },
+  buttonRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "10px",
+  },
+  btnPrimary: {
+    backgroundColor: "#1c1917",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "999px",
+    padding: "10px 18px",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+    boxSizing: "border-box",
+  },
+  btnSecondary: {
+    backgroundColor: "#ffffff",
+    color: "#1c1917",
+    border: "1px solid #d6d3d1",
+    borderRadius: "999px",
+    padding: "10px 18px",
+    fontSize: "14px",
+    fontWeight: 500,
+    cursor: "pointer",
+    boxSizing: "border-box",
+  },
+  card: {
+    backgroundColor: "#ffffff",
+    border: "1px solid #e7e5e4",
+    borderRadius: "16px",
+    padding: "16px",
+    marginBottom: "18px",
+    width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
+  },
+  formStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  twoColRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: "10px",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  input: {
+    display: "block",
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    padding: "11px 12px",
+    borderRadius: "10px",
+    border: "1px solid #d6d3d1",
+    backgroundColor: "#ffffff",
+    color: "#1c1917",
+    fontSize: "14px",
+    boxSizing: "border-box",
+  },
+  textarea: {
+    display: "block",
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    minHeight: "76px",
+    padding: "11px 12px",
+    borderRadius: "10px",
+    border: "1px solid #d6d3d1",
+    backgroundColor: "#ffffff",
+    color: "#1c1917",
+    fontSize: "14px",
+    resize: "vertical",
+    boxSizing: "border-box",
+  },
+  fileBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    padding: "12px",
+    borderRadius: "10px",
+    border: "1px dashed #a8a29e",
+    backgroundColor: "#fafaf9",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  previewImg: {
+    width: "100%",
+    maxWidth: "220px",
+    height: "auto",
+    borderRadius: "10px",
+    objectFit: "cover",
+    border: "1px solid #e7e5e4",
+  },
+  formActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: "10px",
+    marginTop: "6px",
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "10px",
+    marginBottom: "18px",
+  },
+  statCard: {
+    backgroundColor: "#ffffff",
+    border: "1px solid #e7e5e4",
+    borderRadius: "14px",
+    padding: "12px",
+    minWidth: 0,
+    boxSizing: "border-box",
+  },
+  productGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+    gap: "14px",
+  },
+  productCard: {
+    backgroundColor: "#ffffff",
+    border: "1px solid #e7e5e4",
+    borderRadius: "14px",
+    padding: "12px",
+    minWidth: 0,
+    boxSizing: "border-box",
+  },
+  productImg: {
+    width: "100%",
+    height: "190px",
+    objectFit: "cover",
+    borderRadius: "10px",
+    marginBottom: "10px",
+    backgroundColor: "#f5f5f4",
+  },
+};
+
+const emptyForm = {
+  title: "",
+  category: "CLOTHES",
+  subLabel: "",
+  details: "",
+  imageUrl: "",
+  productUrl: "",
+};
 
 export default function App() {
   const [products, setProducts] = useState([]);
-  const [view, setView] = useState("boutique"); // "boutique" | "login" | "atelier"
+  const [view, setView] = useState("boutique");
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("ALL"); // "ALL" | "CLOTHES" | "JEWELLERY"
+  const [category, setCategory] = useState("ALL");
 
-  // Atelier login state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [bannerMsg, setBannerMsg] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loggedInEmail, setLoggedInEmail] = useState("");
 
-  // Atelier manager state
-  const [filterAtelier, setFilterAtelier] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({
-    title: "",
-    category: "CLOTHES",
-    subtitle: "",
-    specs: "",
-    image: "",
-    url: "",
-  });
-
-  const showToast = (msg) => {
-    setBannerMsg(msg);
-    setTimeout(() => {
-      setBannerMsg((prev) => (prev === msg ? "" : prev));
-    }, 3500);
-  };
+  const [form, setForm] = useState(emptyForm);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, PRODUCTS_COLLECTION), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const items = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setProducts(items);
       },
-      (error) => {
-        console.error("Error loading products from Firestore:", error);
-        showToast("Could not load products from Firestore");
+      (err) => {
+        console.error(err);
+        setToast("Could not load products.");
       }
     );
-
     return () => unsubscribe();
   }, []);
 
-  const filteredBoutique = products.filter((item) => {
-    const matchesCat = category === "ALL" || item.category === category;
-    const q = search.trim().toLowerCase();
-    const matchesQuery =
-      !q ||
-      (item.title || "").toLowerCase().includes(q) ||
-      (item.subtitle || "").toLowerCase().includes(q) ||
-      (item.specs || "").toLowerCase().includes(q) ||
-      (item.category || "").toLowerCase().includes(q);
-    return matchesCat && matchesQuery;
-  });
+  function showMessage(msg) {
+    setToast(msg);
+    setTimeout(() => {
+      setToast((prev) => (prev === msg ? "" : prev));
+    }, 3500);
+  }
 
-  const handleLogin = (e) => {
+  function handleLogin(e) {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setLoginError("Please enter both email and password.");
-      return;
-    }
-    setLoginError("");
-    setIsLoggedIn(true);
+    if (!email.trim()) return;
+    setLoggedInEmail(email.trim());
     setView("atelier");
-    showToast("Welcome back to the atelier");
-  };
+  }
 
-  const openAddForm = () => {
+  function openAddForm() {
     setEditingId(null);
-    setForm({
-      title: "",
-      category: "CLOTHES",
-      subtitle: "",
-      specs: "",
-      image: "",
-      url: "",
-    });
+    setForm(emptyForm);
     setShowForm(true);
-  };
+  }
 
-  const openEditForm = (item) => {
+  function openEditForm(item) {
     setEditingId(item.id);
     setForm({
       title: item.title || "",
       category: item.category || "CLOTHES",
-      subtitle: item.subtitle || "",
-      specs: item.specs || "",
-      image: item.image || "",
-      url: item.url || "",
+      subLabel: item.subLabel || "",
+      details: item.details || "",
+      imageUrl: item.imageUrl || "",
+      productUrl: item.productUrl || "",
     });
     setShowForm(true);
-  };
+  }
 
-  const handleSaveProduct = async (e) => {
-    e.preventDefault();
-    if (!form.title.trim() || isSaving) return;
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setIsSaving(true);
-    const cleanItem = {
-      title: form.title.trim(),
-      category: form.category === "JEWELLERY" ? "JEWELLERY" : "CLOTHES",
-      subtitle: form.subtitle.trim(),
-      specs: form.specs.trim(),
-      image: form.image.trim(),
-      url: form.url.trim(),
-    };
-
+    setUploadingImage(true);
     try {
+      const compressedDataUrl = await readAndCompressImage(file);
+      setForm((prev) => ({ ...prev, imageUrl: compressedDataUrl }));
+      showMessage("Photo attached.");
+    } catch (err) {
+      console.error(err);
+      showMessage(err.message || "Could not attach photo.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function handleSaveProduct(e) {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      showMessage("Please enter a product title.");
+      return;
+    }
+    if (uploadingImage) {
+      showMessage("Please wait for the photo to finish processing.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        category: form.category,
+        subLabel: form.subLabel.trim(),
+        details: form.details.trim(),
+        imageUrl: form.imageUrl.trim(),
+        productUrl: form.productUrl.trim(),
+      };
+
       if (editingId) {
-        await updateDoc(doc(db, PRODUCTS_COLLECTION, editingId), cleanItem);
-        showToast("Product updated");
+        await updateDoc(doc(db, PRODUCTS_COLLECTION, editingId), payload);
+        showMessage("Product updated.");
       } else {
         await addDoc(collection(db, PRODUCTS_COLLECTION), {
-          ...cleanItem,
+          ...payload,
           createdAt: Date.now(),
         });
-        showToast("Product added to collection");
+        showMessage("Product added to collection.");
       }
-      setShowForm(false);
-      setEditingId(null);
-    } catch (error) {
-      console.error("Error saving product to Firestore:", error);
-      showToast("Failed to save product");
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
-  const handleDeleteProduct = async (id) => {
+      setForm(emptyForm);
+      setEditingId(null);
+      setShowForm(false);
+    } catch (err) {
+      console.error(err);
+      showMessage("Failed to save product.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
     try {
       await deleteDoc(doc(db, PRODUCTS_COLLECTION, id));
-      showToast("Product removed");
-    } catch (error) {
-      console.error("Error deleting product from Firestore:", error);
-      showToast("Failed to remove product");
+      showMessage("Product deleted.");
+    } catch (err) {
+      console.error(err);
+      showMessage("Could not delete product.");
     }
-  };
+  }
 
-  const totalCount = products.length;
+  const filteredProducts = products.filter((item) => {
+    const matchesCategory = category === "ALL" || item.category === category;
+    const term = search.trim().toLowerCase();
+    const matchesSearch =
+      !term ||
+      (item.title || "").toLowerCase().includes(term) ||
+      (item.subLabel || "").toLowerCase().includes(term);
+    return matchesCategory && matchesSearch;
+  });
+
   const clothesCount = products.filter((p) => p.category === "CLOTHES").length;
   const jewelleryCount = products.filter((p) => p.category === "JEWELLERY").length;
 
-  const filteredAtelier = products.filter((p) => {
-    const q = filterAtelier.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (p.title || "").toLowerCase().includes(q) ||
-      (p.subtitle || "").toLowerCase().includes(q) ||
-      (p.category || "").toLowerCase().includes(q) ||
-      (p.url || "").toLowerCase().includes(q)
-    );
-  });
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#FAF8F2",
-        color: "#1E1B18",
-        fontFamily: "'Georgia', 'Times New Roman', serif",
-        position: "relative",
-      }}
-    >
-      {/* Floating Green Toast Banner */}
-      {bannerMsg && (
-        <div
-          style={{
-            position: "fixed",
-            top: "18px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 80,
-            background: "#163826",
-            color: "#E8F5EC",
-            padding: "12px 20px",
-            borderRadius: "10px",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
-            fontFamily: "system-ui, -apple-system, sans-serif",
-            fontSize: "14px",
-            minWidth: "280px",
-            justifyContent: "space-between",
-          }}
-        >
+    <div style={styles.page}>
+      <div style={styles.container}>
+        {toast && (
+          <div style={{ ...styles.card, backgroundColor: "#ecfdf5", borderColor: "#a7f3d0", padding: "10px 14px" }}>
+            {toast}
+          </div>
+        )}
+
+        <div style={styles.topBar}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span
-              style={{
-                width: "20px",
-                height: "20px",
-                borderRadius: "50%",
-                background: "#2EA05C",
-                color: "#FFFFFF",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "12px",
-                fontWeight: "bold",
-              }}
+            {Logmark ? <Logmark /> : null}
+            <strong>CRYSTALLINE AURA</strong>
+          </div>
+
+          <div style={styles.buttonRow}>
+            <button type="button" style={styles.btnSecondary} onClick={() => setView("boutique")}>
+              Boutique
+            </button>
+            <button
+              type="button"
+              style={styles.btnPrimary}
+              onClick={() => setView(loggedInEmail ? "atelier" : "login")}
             >
-              ✓
-            </span>
-            <span>{bannerMsg}</span>
+              {loggedInEmail ? "Atelier" : "Atelier Login"}
+            </button>
           </div>
-          <button
-            onClick={() => setBannerMsg("")}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#A7C7B4",
-              cursor: "pointer",
-              fontSize: "15px",
-              lineHeight: 1,
-            }}
-            aria-label="Close notification"
-          >
-            ✕
-          </button>
         </div>
-      )}
 
-      {/* BOUTIQUE VIEW */}
-      {view === "boutique" && (
-        <>
-          {/* Top Brand & Search Header */}
-          <header
-            style={{
-              background: "#FAF8F2",
-              padding: "20px 20px 16px",
-              borderBottom: "1px solid #ECE6DA",
-            }}
-          >
-            <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
-              <div
-                onClick={() => {
-                  setCategory("ALL");
-                  setSearch("");
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  cursor: "pointer",
-                  marginBottom: "18px",
-                }}
-              >
-                <div style={{ color: "#C5A059" }}>
-                  <LogoMark className="w-8 h-8" />
-                </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "15px",
-                      letterSpacing: "0.24em",
-                      textTransform: "uppercase",
-                      color: "#1E1B18",
-                    }}
-                  >
-                    CRYSTALLINE AURA
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "10px",
-                      letterSpacing: "0.22em",
-                      textTransform: "uppercase",
-                      color: "#8E8273",
-                      fontFamily: "system-ui, sans-serif",
-                      marginTop: "2px",
-                    }}
-                  >
-                    CURATED ATELIER
-                  </div>
-                </div>
-              </div>
-
-              {/* Search Pill */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  background: "#FFFFFF",
-                  border: "1px solid #E5DEC9",
-                  borderRadius: "999px",
-                  padding: "10px 18px",
-                  marginBottom: "14px",
-                  gap: "12px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
-                  <span style={{ color: "#9A8F80", fontSize: "15px" }}>⌕</span>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search dresses, earrings, keywords..."
-                    style={{
-                      width: "100%",
-                      border: "none",
-                      outline: "none",
-                      background: "transparent",
-                      fontSize: "14px",
-                      color: "#1E1B18",
-                      fontFamily: "system-ui, sans-serif",
-                    }}
-                  />
-                </div>
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: "#8E8273",
-                    whiteSpace: "nowrap",
-                    fontFamily: "system-ui, sans-serif",
-                  }}
-                >
-                  {filteredBoutique.length} {filteredBoutique.length === 1 ? "curated find" : "curated finds"}
-                </span>
-              </div>
-
-              {/* Category Pills */}
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                {["ALL", "CLOTHES", "JEWELLERY"].map((cat) => {
-                  const active = category === cat;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setCategory(cat)}
-                      style={{
-                        padding: "9px 22px",
-                        borderRadius: "999px",
-                        border: active ? "1px solid #1C1917" : "1px solid #E2DACB",
-                        background: active ? "#1C1917" : "#FFFFFF",
-                        color: active ? "#FAF8F2" : "#7A7064",
-                        fontSize: "11px",
-                        letterSpacing: "0.18em",
-                        textTransform: "uppercase",
-                        cursor: "pointer",
-                        fontFamily: "system-ui, sans-serif",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </header>
-
-          {/* Hero Section */}
-          <section
-            style={{
-              padding: "36px 20px 28px",
-              position: "relative",
-              overflow: "hidden",
-              borderBottom: "1px solid #ECE6DA",
-            }}
-          >
-            <div style={{ maxWidth: "1120px", margin: "0 auto", position: "relative" }}>
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 16px",
-                  borderRadius: "999px",
-                  background: "#F5EFE3",
-                  border: "1px solid #EAE0CE",
-                  color: "#9B7B3E",
-                  fontSize: "10px",
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  fontFamily: "system-ui, sans-serif",
-                  marginBottom: "20px",
-                }}
-              >
-                <span>✦</span>
-                <span>AFFILIATE LOOKBOOK · HAND-PICKED AMAZON FINDS</span>
-              </div>
-
-              <h1
-                style={{
-                  fontSize: "clamp(36px, 7vw, 56px)",
-                  fontWeight: 400,
-                  lineHeight: 1.1,
-                  margin: "0 0 18px",
-                  color: "#1E1B18",
-                  maxWidth: "680px",
-                }}
-              >
-                Effortless <span style={{ fontStyle: "italic", color: "#B8924A" }}>elegance,</span>
-                <br />
-                curated daily.
-              </h1>
-
-              <p
-                style={{
-                  fontSize: "16px",
-                  lineHeight: 1.6,
-                  color: "#766C60",
-                  maxWidth: "540px",
-                  margin: 0,
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                Sculpted dresses &amp; radiant heirloom jewellery — every piece hand-picked, one tap away on Amazon.
+        {view === "boutique" && (
+          <>
+            <div style={{ marginBottom: "16px" }}>
+              <p style={{ margin: "0 0 10px 0", color: "#57534e", fontSize: "14px" }}>
+                {filteredProducts.length} curated finds
               </p>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+                {["ALL", "CLOTHES", "JEWELLERY"].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    style={category === cat ? styles.btnPrimary : styles.btnSecondary}
+                    onClick={() => setCategory(cat)}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="text"
+                placeholder="Search pieces..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={styles.input}
+              />
             </div>
-          </section>
 
-          {/* Marquee / Trend Strip */}
-          <div
-            style={{
-              background: "#F7F3EA",
-              borderBottom: "1px solid #ECE6DA",
-              padding: "13px 20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "28px",
-              flexWrap: "wrap",
-              fontSize: "11px",
-              letterSpacing: "0.24em",
-              textTransform: "uppercase",
-              color: "#8E8273",
-              fontFamily: "system-ui, sans-serif",
-            }}
-          >
-            <span>CURATED SILHOUETTES</span>
-            <span style={{ color: "#C5A059", fontSize: "9px" }}>◆</span>
-            <span>18K VERMEIL EARRINGS</span>
-            <span style={{ color: "#C5A059", fontSize: "9px" }}>◆</span>
-            <span>EVENING COUTURE</span>
-          </div>
-
-          {/* Product Grid */}
-          <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "32px 20px 56px" }}>
-            {filteredBoutique.length === 0 ? (
-              <div
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #EAE3D5",
-                  borderRadius: "16px",
-                  padding: "44px 24px",
-                  textAlign: "center",
-                }}
-              >
-                <p style={{ fontSize: "18px", margin: "0 0 8px" }}>No curated pieces yet</p>
-                <p
-                  style={{
-                    fontSize: "14px",
-                    color: "#7E7468",
-                    margin: "0 0 20px",
-                    fontFamily: "system-ui, sans-serif",
-                  }}
-                >
-                  Open Atelier Login in the footer to add your own hand-picked products.
-                </p>
-                <button
-                  onClick={() => setView(isLoggedIn ? "atelier" : "login")}
-                  style={{
-                    padding: "11px 22px",
-                    borderRadius: "999px",
-                    border: "1px solid #1C1917",
-                    background: "#1C1917",
-                    color: "#FAF8F2",
-                    fontSize: "11px",
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    cursor: "pointer",
-                    fontFamily: "system-ui, sans-serif",
-                  }}
-                >
+            {filteredProducts.length === 0 ? (
+              <div style={{ ...styles.card, textAlign: "center", padding: "28px 16px" }}>
+                <p style={{ margin: "0 0 12px 0", color: "#57534e" }}>No pieces found.</p>
+                <button type="button" style={styles.btnPrimary} onClick={() => setView("login")}>
                   Open Atelier
                 </button>
               </div>
             ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-                  gap: "28px",
-                }}
-              >
-                {filteredBoutique.map((item) => (
-                  <article
-                    key={item.id}
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #EAE3D5",
-                      borderRadius: "16px",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <div>
+              <div style={styles.productGrid}>
+                {filteredProducts.map((item) => (
+                  <div key={item.id} style={styles.productCard}>
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.title} style={styles.productImg} />
+                    ) : (
                       <div
                         style={{
-                          position: "relative",
-                          background: "#F4F0E8",
-                          minHeight: "230px",
+                          ...styles.productImg,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          padding: "14px",
+                          color: "#78716c",
+                          fontSize: "13px",
                         }}
                       >
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: "12px",
-                            left: "12px",
-                            background: "rgba(255,255,255,0.92)",
-                            color: "#4A433B",
-                            padding: "5px 10px",
-                            borderRadius: "999px",
-                            fontSize: "10px",
-                            letterSpacing: "0.18em",
-                            textTransform: "uppercase",
-                            fontFamily: "system-ui, sans-serif",
-                          }}
-                        >
-                          {item.category}
-                        </span>
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            style={{
-                              maxHeight: "240px",
-                              width: "100%",
-                              objectFit: "contain",
-                              borderRadius: "8px",
-                            }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              color: "#9A8F80",
-                              fontSize: "12px",
-                              fontFamily: "system-ui, sans-serif",
-                            }}
-                          >
-                            No image provided
-                          </div>
-                        )}
+                        No image provided
                       </div>
-
-                      {item.specs && (
-                        <div
-                          style={{
-                            margin: "12px 14px 0",
-                            padding: "12px",
-                            background: "#F3F1EC",
-                            borderRadius: "10px",
-                            fontSize: "13px",
-                            lineHeight: 1.5,
-                            color: "#2C2723",
-                            fontFamily: "system-ui, sans-serif",
-                            whiteSpace: "pre-line",
-                          }}
-                        >
-                          {item.specs}
-                        </div>
-                      )}
-
-                      <div style={{ padding: "14px 16px 8px" }}>
-                        <h2
-                          style={{
-                            fontSize: "19px",
-                            fontWeight: 400,
-                            lineHeight: 1.3,
-                            margin: 0,
-                            color: "#1E1B18",
-                          }}
-                        >
-                          {item.title}
-                        </h2>
-                        {item.subtitle && (
-                          <p
-                            style={{
-                              fontSize: "12px",
-                              color: "#8E8273",
-                              margin: "6px 0 0",
-                              letterSpacing: "0.08em",
-                              textTransform: "uppercase",
-                              fontFamily: "system-ui, sans-serif",
-                            }}
-                          >
-                            {item.subtitle}
-                          </p>
-                        )}
-                      </div>
+                    )}
+                    <div style={{ fontSize: "11px", color: "#78716c", marginBottom: "4px" }}>
+                      {item.category} {item.subLabel ? `• ${item.subLabel}` : ""}
                     </div>
-
-                    <div style={{ padding: "8px 16px 18px" }}>
-                      {item.url ? (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "8px",
-                            width: "100%",
-                            padding: "13px 16px",
-                            borderRadius: "999px",
-                            border: "1px solid #E4DDD0",
-                            background: "#FAF8F3",
-                            color: "#1E1B18",
-                            textDecoration: "none",
-                            fontSize: "11px",
-                            letterSpacing: "0.2em",
-                            textTransform: "uppercase",
-                            fontFamily: "system-ui, sans-serif",
-                            boxSizing: "border-box",
-                          }}
-                        >
-                          <span>BUY ON AMAZON</span>
-                          <span>↗</span>
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setView(isLoggedIn ? "atelier" : "login")}
-                          style={{
-                            width: "100%",
-                            padding: "13px 16px",
-                            borderRadius: "999px",
-                            border: "1px solid #E4DDD0",
-                            background: "#FAF8F3",
-                            color: "#7A7064",
-                            fontSize: "11px",
-                            letterSpacing: "0.2em",
-                            textTransform: "uppercase",
-                            fontFamily: "system-ui, sans-serif",
-                            cursor: "pointer",
-                          }}
-                        >
-                          ADD LINK IN ATELIER
-                        </button>
-                      )}
-                    </div>
-                  </article>
+                    <div style={{ fontWeight: 600, marginBottom: "6px" }}>{item.title}</div>
+                    {item.details && (
+                      <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#57534e" }}>
+                        {item.details}
+                      </p>
+                    )}
+                    {item.productUrl && (
+                      <a
+                        href={item.productUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: "13px", color: "#1c1917", fontWeight: 600 }}
+                      >
+                        View Link
+                      </a>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
-          </main>
+          </>
+        )}
 
-          {/* Boutique Footer */}
-          <footer
-            style={{
-              background: "#F5F1E8",
-              borderTop: "1px solid #EAE2D3",
-              padding: "44px 20px 36px",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ color: "#C5A059", display: "flex", justifyContent: "center", marginBottom: "12px" }}>
-              <LogoMark className="w-7 h-7" />
-            </div>
-            <div
-              style={{
-                fontSize: "14px",
-                letterSpacing: "0.24em",
-                textTransform: "uppercase",
-                color: "#1E1B18",
-                marginBottom: "12px",
-              }}
-            >
-              CRYSTALLINE AURA
-            </div>
-            <p
-              style={{
-                fontSize: "12px",
-                color: "#8E8273",
-                maxWidth: "420px",
-                margin: "0 auto 24px",
-                lineHeight: 1.6,
-                fontFamily: "system-ui, sans-serif",
-              }}
-            >
-              As an Amazon Associate, Crystalline Aura earns from qualifying purchases.
-            </p>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "16px",
-                fontSize: "11px",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "#8E8273",
-                fontFamily: "system-ui, sans-serif",
-              }}
-            >
-              <span>© 2026 CRYSTALLINE AURA</span>
-              <span>|</span>
-              <button
-                onClick={() => setView(isLoggedIn ? "atelier" : "login")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  color: "#766C60",
-                  fontSize: "11px",
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                ATELIER LOGIN
-              </button>
-            </div>
-          </footer>
-        </>
-      )}
-
-      {/* ATELIER LOGIN VIEW */}
-      {view === "login" && (
-        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "20px" }}>
-            <button
-              onClick={() => setView("boutique")}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#7A7064",
-                fontSize: "11px",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                cursor: "pointer",
-                fontFamily: "system-ui, sans-serif",
-              }}
-            >
-              ← BACK TO BOUTIQUE
-            </button>
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "20px 24px 60px",
-              maxWidth: "440px",
-              width: "100%",
-              margin: "0 auto",
-            }}
-          >
-            <div style={{ color: "#C5A059", marginBottom: "14px" }}>
-              <LogoMark className="w-9 h-9" />
-            </div>
-            <h1 style={{ fontSize: "34px", fontWeight: 400, margin: "0 0 8px", color: "#1E1B18" }}>
-              The Atelier
-            </h1>
-            <div
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.24em",
-                textTransform: "uppercase",
-                color: "#9A8F80",
-                marginBottom: "32px",
-                fontFamily: "system-ui, sans-serif",
-              }}
-            >
-              PRIVATE MANAGEMENT ACCESS
-            </div>
-
-            <form onSubmit={handleLogin} style={{ width: "100%" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "10px",
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "#766C60",
-                  marginBottom: "8px",
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                EMAIL
-              </label>
+        {view === "login" && (
+          <form onSubmit={handleLogin} style={styles.card}>
+            <h2 style={{ marginTop: 0, marginBottom: "14px", fontSize: "20px" }}>The Atelier</h2>
+            <div style={styles.formStack}>
               <input
                 type="email"
+                placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: "10px",
-                  border: "1px solid #E2DACB",
-                  background: "#FFFFFF",
-                  fontSize: "15px",
-                  marginBottom: "18px",
-                  boxSizing: "border-box",
-                  fontFamily: "system-ui, sans-serif",
-                }}
+                required
+                style={styles.input}
               />
-
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "10px",
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "#766C60",
-                  marginBottom: "8px",
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                PASSWORD
-              </label>
               <input
                 type="password"
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: "10px",
-                  border: "1px solid #E2DACB",
-                  background: "#FFFFFF",
-                  fontSize: "15px",
-                  marginBottom: "16px",
-                  boxSizing: "border-box",
-                  fontFamily: "system-ui, sans-serif",
-                }}
+                style={styles.input}
               />
-
-              {loginError && (
-                <p
-                  style={{
-                    color: "#9E2A2B",
-                    fontSize: "13px",
-                    margin: "0 0 14px",
-                    fontFamily: "system-ui, sans-serif",
-                  }}
-                >
-                  {loginError}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                style={{
-                  width: "100%",
-                  padding: "15px 18px",
-                  borderRadius: "999px",
-                  border: "none",
-                  background: "#231F1C",
-                  color: "#FAF8F2",
-                  fontSize: "11px",
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                🔒 ENTER THE ATELIER
+              <button type="submit" style={styles.btnPrimary}>
+                Sign In
               </button>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+          </form>
+        )}
 
-      {/* ATELIER MANAGER VIEW */}
-      {view === "atelier" && (
-        <div style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 20px 64px" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "12px",
-              marginBottom: "24px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ color: "#C5A059" }}>
-                <LogoMark className="w-8 h-8" />
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    letterSpacing: "0.22em",
-                    textTransform: "uppercase",
-                    color: "#1E1B18",
-                  }}
-                >
-                  ATELIER MANAGER
+        {view === "atelier" && (
+          <>
+            <div style={styles.card}>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "10px" }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px 0", fontSize: "20px" }}>ATELIER MANAGER</h2>
+                  <div style={{ fontSize: "13px", color: "#57534e", wordBreak: "break-all" }}>
+                    {loggedInEmail}
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#8E8273",
-                    fontFamily: "system-ui, sans-serif",
-                  }}
-                >
-                  {email || "atelier@crystallineaura.com"}
+                <div style={styles.buttonRow}>
+                  <button type="button" style={styles.btnSecondary} onClick={() => setView("boutique")}>
+                    View Boutique
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.btnSecondary}
+                    onClick={() => {
+                      setLoggedInEmail("");
+                      setShowForm(false);
+                      setView("boutique");
+                    }}
+                  >
+                    Logout
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={() => setView("boutique")}
-                style={{
-                  padding: "9px 16px",
-                  borderRadius: "999px",
-                  border: "1px solid #E2DACB",
-                  background: "#FFFFFF",
-                  color: "#4A433B",
-                  fontSize: "11px",
-                  letterSpacing: "0.16em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                VIEW BOUTIQUE
-              </button>
-              <button
-                onClick={() => {
-                  setIsLoggedIn(false);
-                  setPassword("");
-                  setView("boutique");
-                }}
-                style={{
-                  padding: "9px 16px",
-                  borderRadius: "999px",
-                  border: "1px solid #E2DACB",
-                  background: "#FFFFFF",
-                  color: "#4A433B",
-                  fontSize: "11px",
-                  letterSpacing: "0.16em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                  fontFamily: "system-ui, sans-serif",
-                }}
-              >
-                ↪ LOGOUT
+            <div style={styles.statsGrid}>
+              <div style={styles.statCard}>
+                <div style={{ fontSize: "20px", fontWeight: 700 }}>{products.length}</div>
+                <div style={{ fontSize: "11px", color: "#78716c" }}>TOTAL ITEMS</div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={{ fontSize: "20px", fontWeight: 700 }}>{clothesCount}</div>
+                <div style={{ fontSize: "11px", color: "#78716c" }}>CLOTHES</div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={{ fontSize: "20px", fontWeight: 700 }}>{jewelleryCount}</div>
+                <div style={{ fontSize: "11px", color: "#78716c" }}>JEWELLERY</div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <h3 style={{ margin: 0, fontSize: "18px" }}>Collection</h3>
+              <button type="button" style={styles.btnPrimary} onClick={openAddForm}>
+                + ADD PRODUCT
               </button>
             </div>
-          </div>
 
-          {/* Stats Row */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "12px",
-              marginBottom: "28px",
-            }}
-          >
-            {[
-              { label: "TOTAL ITEMS", value: totalCount },
-              { label: "CLOTHES", value: clothesCount },
-              { label: "JEWELLERY", value: jewelleryCount },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #EAE3D5",
-                  borderRadius: "14px",
-                  padding: "18px 16px",
-                }}
-              >
-                <div style={{ fontSize: "24px", color: "#1E1B18", marginBottom: "6px" }}>{stat.value}</div>
-                <div
-                  style={{
-                    fontSize: "10px",
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    color: "#8E8273",
-                    fontFamily: "system-ui, sans-serif",
-                  }}
-                >
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </div>
+            {showForm && (
+              <form onSubmit={handleSaveProduct} style={styles.card}>
+                <h4 style={{ marginTop: 0, marginBottom: "12px", fontSize: "16px" }}>
+                  {editingId ? "Edit Product" : "Add New Product"}
+                </h4>
 
-          {/* Collection Header + Add Button */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "12px",
-              marginBottom: "16px",
-              flexWrap: "wrap",
-            }}
-          >
-            <h2 style={{ fontSize: "28px", fontWeight: 400, margin: 0 }}>Collection</h2>
-            <button
-              onClick={openAddForm}
-              style={{
-                padding: "11px 20px",
-                borderRadius: "999px",
-                border: "none",
-                background: "#231F1C",
-                color: "#FAF8F2",
-                fontSize: "11px",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                cursor: "pointer",
-                fontFamily: "system-ui, sans-serif",
-              }}
-            >
-              + ADD PRODUCT
-            </button>
-          </div>
+                <div style={styles.formStack}>
+                  <input
+                    type="text"
+                    placeholder="Product title (e.g., 18k Gold Vermeil Hoop Earrings)"
+                    value={form.title}
+                    onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                    style={styles.input}
+                  />
 
-          {/* Add / Edit Form */}
-          {showForm && (
-            <form
-              onSubmit={handleSaveProduct}
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #E2DACB",
-                borderRadius: "16px",
-                padding: "20px",
-                marginBottom: "18px",
-                display: "grid",
-                gap: "14px",
-                fontFamily: "system-ui, sans-serif",
-              }}
-            >
-              <div style={{ fontSize: "15px", fontWeight: 600 }}>
-                {editingId ? "Edit Product" : "Add New Product"}
-              </div>
-              <input
-                required
-                placeholder="Product title (e.g., 18k Gold Vermeil Hoop Earrings)"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                style={{ padding: "11px 14px", borderRadius: "10px", border: "1px solid #E2DACB" }}
-              />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  style={{ padding: "11px 14px", borderRadius: "10px", border: "1px solid #E2DACB", background: "#FFFFFF" }}
-                >
-                  <option value="CLOTHES">CLOTHES</option>
-                  <option value="JEWELLERY">JEWELLERY</option>
-                </select>
-                <input
-                  placeholder="Sub-label (e.g., BLACK HIGH RISE JEANS)"
-                  value={form.subtitle}
-                  onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
-                  style={{ padding: "11px 14px", borderRadius: "10px", border: "1px solid #E2DACB" }}
-                />
-              </div>
-              <textarea
-                rows={2}
-                placeholder="Size / fit / material details (optional)"
-                value={form.specs}
-                onChange={(e) => setForm({ ...form, specs: e.target.value })}
-                style={{ padding: "11px 14px", borderRadius: "10px", border: "1px solid #E2DACB" }}
-              />
-              <input
-                placeholder="Image URL (optional)"
-                value={form.image}
-                onChange={(e) => setForm({ ...form, image: e.target.value })}
-                style={{ padding: "11px 14px", borderRadius: "10px", border: "1px solid #E2DACB" }}
-              />
-              <input
-                placeholder="Amazon product URL (optional)"
-                value={form.url}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-                style={{ padding: "11px 14px", borderRadius: "10px", border: "1px solid #E2DACB" }}
-              />
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: "999px",
-                    border: "1px solid #E2DACB",
-                    background: "transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  style={{
-                    padding: "10px 20px",
-                    borderRadius: "999px",
-                    border: "none",
-                    background: "#231F1C",
-                    color: "#FAF8F2",
-                    cursor: "pointer",
-                  }}
-                >
-                  {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save Product"}
-                </button>
-              </div>
-            </form>
-          )}
+                  <div style={styles.twoColRow}>
+                    <select
+                      value={form.category}
+                      onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))}
+                      style={styles.input}
+                    >
+                      <option value="CLOTHES">CLOTHES</option>
+                      <option value="JEWELLERY">JEWELLERY</option>
+                    </select>
 
-          {/* Filter Input */}
-          <input
-            type="text"
-            value={filterAtelier}
-            onChange={(e) => setFilterAtelier(e.target.value)}
-            placeholder="Filter your collection..."
-            style={{
-              width: "100%",
-              padding: "13px 16px",
-              borderRadius: "12px",
-              border: "1px solid #E2DACB",
-              background: "#FFFFFF",
-              fontSize: "14px",
-              marginBottom: "18px",
-              boxSizing: "border-box",
-              fontFamily: "system-ui, sans-serif",
-            }}
-          />
+                    <input
+                      type="text"
+                      placeholder="Sub-label (e.g., BLACK HIGH RISE)"
+                      value={form.subLabel}
+                      onChange={(e) => setForm((prev) => ({ ...prev, subLabel: e.target.value }))}
+                      style={styles.input}
+                    />
+                  </div>
 
-          {/* Atelier Item List */}
-          {filteredAtelier.length === 0 ? (
-            <div
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #EAE3D5",
-                borderRadius: "14px",
-                padding: "28px",
-                textAlign: "center",
-                color: "#7E7468",
-                fontFamily: "system-ui, sans-serif",
-                fontSize: "14px",
-              }}
-            >
-              No items in your collection yet. Click <strong>+ ADD PRODUCT</strong> above to add one.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {filteredAtelier.map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #EAE3D5",
-                    borderRadius: "14px",
-                    padding: "14px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
-                    {item.image && (
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        style={{
-                          width: "54px",
-                          height: "66px",
-                          objectFit: "cover",
-                          borderRadius: "8px",
-                          flexShrink: 0,
-                        }}
-                      />
+                  <textarea
+                    placeholder="Size / fit / material details (optional)"
+                    value={form.details}
+                    onChange={(e) => setForm((prev) => ({ ...prev, details: e.target.value }))}
+                    style={styles.textarea}
+                  />
+
+                  <div style={styles.fileBox}>
+                    <label style={{ fontSize: "13px", fontWeight: 600 }}>
+                      Upload Photo from Device
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      style={{ width: "100%", maxWidth: "100%", fontSize: "13px" }}
+                    />
+                    {uploadingImage && (
+                      <div style={{ fontSize: "12px", color: "#57534e" }}>Processing photo...</div>
                     )}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: "17px", color: "#1E1B18", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {item.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "10px",
-                          letterSpacing: "0.14em",
-                          textTransform: "uppercase",
-                          color: "#8E8273",
-                          fontFamily: "system-ui, sans-serif",
-                          marginTop: "3px",
-                        }}
-                      >
-                        {item.category}
-                        {item.subtitle ? ` · ${item.subtitle}` : ""}
-                      </div>
-                      {item.url && (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: "inline-block",
-                            marginTop: "6px",
-                            fontSize: "12px",
-                            color: "#9B7B3E",
-                            fontFamily: "system-ui, sans-serif",
-                            wordBreak: "break-all",
-                          }}
+                    {form.imageUrl && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <img src={form.imageUrl} alt="Preview" style={styles.previewImg} />
+                        <button
+                          type="button"
+                          style={{ ...styles.btnSecondary, alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px" }}
+                          onClick={() => setForm((prev) => ({ ...prev, imageUrl: "" }))}
                         >
-                          {item.url} ↗
-                        </a>
-                      )}
-                    </div>
+                          Remove Photo
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                  <input
+                    type="text"
+                    placeholder="Product / Amazon URL (optional)"
+                    value={form.productUrl}
+                    onChange={(e) => setForm((prev) => ({ ...prev, productUrl: e.target.value }))}
+                    style={styles.input}
+                  />
+
+                  <div style={styles.formActions}>
                     <button
-                      onClick={() => openEditForm(item)}
-                      title="Edit item"
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "50%",
-                        border: "1px solid #EAE3D5",
-                        background: "#FAF8F2",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                      }}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProduct(item.id)}
-                      title="Delete item"
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "50%",
-                        border: "1px solid #EAE3D5",
-                        background: "#FAF8F2",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                      }}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+                      type="button"
+                      style={styles.btnSecondary}
+                      onClick={() => {
+                        setShowForm(false);
