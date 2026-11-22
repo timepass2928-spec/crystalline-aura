@@ -1,7 +1,7 @@
 import { Component, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import Lenis from "lenis";
-import "@/App.css";
+import "./index.css";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { LogoMark } from "@/components/Logo";
