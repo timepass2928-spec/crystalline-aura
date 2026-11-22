@@ -11,386 +11,300 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
-const PRODUCTS_COLLECTION = "products";
-const MAX_STORED_IMAGE_CHARS = 750000;
+const COL = "products";
+const MAX_CHARS = 700000;
+const emptyForm = { title: "", category: "CLOTHES", subLabel: "", details: "", imageUrl: "", productUrl: "" };
 
-function readAndCompressImage(file) {
+function compressFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-
-    reader.onerror = () => reject(new Error("Could not read image file."));
+    reader.onerror = () => reject(new Error("Could not read file."));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error("Invalid image file."));
+      img.onerror = () => reject(new Error("Invalid image."));
       img.onload = () => {
+        const max = 850;
+        let w = img.width;
+        let h = img.height;
+        if (w > max || h > max) {
+          if (w >= h) { h = Math.round((h * max) / w); w = max; }
+          else { w = Math.round((w * max) / h); h = max; }
+        }
         const canvas = document.createElement("canvas");
-        const maxSide = 900;
-        let { width, height } = img;
-
-        if (width > maxSide || height > maxSide) {
-          if (width >= height) {
-            height = Math.round((height * maxSide) / width);
-            width = maxSide;
-          } else {
-            width = Math.round((width * maxSide) / height);
-            height = maxSide;
-          }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        let q = 0.78;
+        let out = canvas.toDataURL("image/jpeg", q);
+        while (out.length > MAX_CHARS && q > 0.35) {
+          q -= 0.1;
+          out = canvas.toDataURL("image/jpeg", q);
         }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        let quality = 0.8;
-        let dataUrl = canvas.toDataURL("image/jpeg", quality);
-
-        while (dataUrl.length > MAX_STORED_IMAGE_CHARS && quality > 0.35) {
-          quality -= 0.1;
-          dataUrl = canvas.toDataURL("image/jpeg", quality);
-        }
-
-        if (dataUrl.length > MAX_STORED_IMAGE_CHARS) {
-          reject(new Error("Image is still too large. Please pick a smaller photo."));
-          return;
-        }
-
-        resolve(dataUrl);
+        if (out.length > MAX_CHARS) reject(new Error("Photo too large. Pick a smaller one."));
+        else resolve(out);
       };
       img.src = reader.result;
     };
-
     reader.readAsDataURL(file);
   });
 }
 
-const styles = {
-  page: {
-    minHeight: "100vh",
-    backgroundColor: "#faf8f5",
-    color: "#1c1917",
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    padding: "16px",
-    boxSizing: "border-box",
-  },
-  container: {
-    maxWidth: "820px",
-    margin: "0 auto",
-    width: "100%",
-    boxSizing: "border-box",
-  },
-  topBar: {
-    display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "12px",
-    marginBottom: "20px",
-  },
-  buttonRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "10px",
-  },
-  btnPrimary: {
-    backgroundColor: "#1c1917",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: "999px",
-    padding: "10px 18px",
-    fontSize: "14px",
-    fontWeight: 600,
-    cursor: "pointer",
-    boxSizing: "border-box",
-  },
-  btnSecondary: {
-    backgroundColor: "#ffffff",
-    color: "#1c1917",
-    border: "1px solid #d6d3d1",
-    borderRadius: "999px",
-    padding: "10px 18px",
-    fontSize: "14px",
-    fontWeight: 500,
-    cursor: "pointer",
-    boxSizing: "border-box",
-  },
-  card: {
-    backgroundColor: "#ffffff",
-    border: "1px solid #e7e5e4",
-    borderRadius: "16px",
-    padding: "16px",
-    marginBottom: "18px",
-    width: "100%",
-    maxWidth: "100%",
-    boxSizing: "border-box",
-    overflow: "hidden",
-  },
-  formStack: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    width: "100%",
-    boxSizing: "border-box",
-  },
-  twoColRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "10px",
-    width: "100%",
-    boxSizing: "border-box",
-  },
-  input: {
-    display: "block",
-    width: "100%",
-    maxWidth: "100%",
-    minWidth: 0,
-    padding: "11px 12px",
-    borderRadius: "10px",
-    border: "1px solid #d6d3d1",
-    backgroundColor: "#ffffff",
-    color: "#1c1917",
-    fontSize: "14px",
-    boxSizing: "border-box",
-  },
-  textarea: {
-    display: "block",
-    width: "100%",
-    maxWidth: "100%",
-    minWidth: 0,
-    minHeight: "76px",
-    padding: "11px 12px",
-    borderRadius: "10px",
-    border: "1px solid #d6d3d1",
-    backgroundColor: "#ffffff",
-    color: "#1c1917",
-    fontSize: "14px",
-    resize: "vertical",
-    boxSizing: "border-box",
-  },
-  fileBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    padding: "12px",
-    borderRadius: "10px",
-    border: "1px dashed #a8a29e",
-    backgroundColor: "#fafaf9",
-    width: "100%",
-    boxSizing: "border-box",
-  },
-  previewImg: {
-    width: "100%",
-    maxWidth: "220px",
-    height: "auto",
-    borderRadius: "10px",
-    objectFit: "cover",
-    border: "1px solid #e7e5e4",
-  },
-  formActions: {
-    display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    gap: "10px",
-    marginTop: "6px",
-  },
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: "10px",
-    marginBottom: "18px",
-  },
-  statCard: {
-    backgroundColor: "#ffffff",
-    border: "1px solid #e7e5e4",
-    borderRadius: "14px",
-    padding: "12px",
-    minWidth: 0,
-    boxSizing: "border-box",
-  },
-  productGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-    gap: "14px",
-  },
-  productCard: {
-    backgroundColor: "#ffffff",
-    border: "1px solid #e7e5e4",
-    borderRadius: "14px",
-    padding: "12px",
-    minWidth: 0,
-    boxSizing: "border-box",
-  },
-  productImg: {
-    width: "100%",
-    height: "190px",
-    objectFit: "cover",
-    borderRadius: "10px",
-    marginBottom: "10px",
-    backgroundColor: "#f5f5f4",
-  },
-};
-
-const emptyForm = {
-  title: "",
-  category: "CLOTHES",
-  subLabel: "",
-  details: "",
-  imageUrl: "",
-  productUrl: "",
+const css = {
+  page: { minHeight: "100vh", background: "#faf8f5", color: "#1c1917", fontFamily: "system-ui, sans-serif", padding: "16px", boxSizing: "border-box" },
+  wrap: { maxWidth: "820px", margin: "0 auto", width: "100%", boxSizing: "border-box" },
+  row: { display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" },
+  between: { display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" },
+  primary: { background: "#1c1917", color: "#fff", border: "none", borderRadius: "999px", padding: "10px 16px", fontSize: "14px", fontWeight: 600, cursor: "pointer", boxSizing: "border-box" },
+  secondary: { background: "#fff", color: "#1c1917", border: "1px solid #d6d3d1", borderRadius: "999px", padding: "10px 16px", fontSize: "14px", cursor: "pointer", boxSizing: "border-box" },
+  card: { background: "#fff", border: "1px solid #e7e5e4", borderRadius: "16px", padding: "16px", marginBottom: "16px", width: "100%", boxSizing: "border-box", overflow: "hidden" },
+  stack: { display: "flex", flexDirection: "column", gap: "12px", width: "100%", boxSizing: "border-box" },
+  grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "10px", width: "100%" },
+  field: { display: "block", width: "100%", maxWidth: "100%", minWidth: 0, padding: "10px 12px", borderRadius: "10px", border: "1px solid #d6d3d1", background: "#fff", color: "#1c1917", fontSize: "14px", boxSizing: "border-box" },
+  area: { display: "block", width: "100%", maxWidth: "100%", minWidth: 0, minHeight: "72px", padding: "10px 12px", borderRadius: "10px", border: "1px solid #d6d3d1", background: "#fff", color: "#1c1917", fontSize: "14px", resize: "vertical", boxSizing: "border-box" },
+  uploadBox: { display: "flex", flexDirection: "column", gap: "8px", padding: "12px", borderRadius: "10px", border: "1px dashed #a8a29e", background: "#fafaf9", width: "100%", boxSizing: "border-box" },
+  preview: { width: "100%", maxWidth: "200px", borderRadius: "10px", objectFit: "cover" },
+  stats: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "10px", marginBottom: "16px" },
+  stat: { background: "#fff", border: "1px solid #e7e5e4", borderRadius: "14px", padding: "12px", minWidth: 0, boxSizing: "border-box" },
+  cards: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "14px" },
+  itemCard: { background: "#fff", border: "1px solid #e7e5e4", borderRadius: "14px", padding: "12px", minWidth: 0, boxSizing: "border-box" },
+  thumb: { width: "100%", height: "180px", objectFit: "cover", borderRadius: "10px", marginBottom: "10px", background: "#f5f5f4" },
 };
 
 export default function App() {
   const [products, setProducts] = useState([]);
   const [view, setView] = useState("boutique");
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("ALL");
-
+  const [cat, setCat] = useState("ALL");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loggedInEmail, setLoggedInEmail] = useState("");
-
+  const [userEmail, setUserEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [busyImg, setBusyImg] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState("");
+  const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    const q = query(collection(db, PRODUCTS_COLLECTION), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setProducts(items);
-      },
-      (err) => {
-        console.error(err);
-        setToast("Could not load products.");
-      }
-    );
-    return () => unsubscribe();
+    const q = query(collection(db, COL), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), () => notify("Could not load items."));
   }, []);
 
-  function showMessage(msg) {
-    setToast(msg);
-    setTimeout(() => {
-      setToast((prev) => (prev === msg ? "" : prev));
-    }, 3500);
+  function notify(text) {
+    setMsg(text);
+    setTimeout(() => setMsg((prev) => (prev === text ? "" : prev)), 3000);
   }
 
-  function handleLogin(e) {
+  function onLogin(e) {
     e.preventDefault();
     if (!email.trim()) return;
-    setLoggedInEmail(email.trim());
+    setUserEmail(email.trim());
     setView("atelier");
   }
 
-  function openAddForm() {
-    setEditingId(null);
+  function startAdd() {
+    setEditId(null);
     setForm(emptyForm);
     setShowForm(true);
   }
 
-  function openEditForm(item) {
-    setEditingId(item.id);
-    setForm({
-      title: item.title || "",
-      category: item.category || "CLOTHES",
-      subLabel: item.subLabel || "",
-      details: item.details || "",
-      imageUrl: item.imageUrl || "",
-      productUrl: item.productUrl || "",
-    });
+  function startEdit(item) {
+    setEditId(item.id);
+    setForm({ title: item.title || "", category: item.category || "CLOTHES", subLabel: item.subLabel || "", details: item.details || "", imageUrl: item.imageUrl || "", productUrl: item.productUrl || "" });
     setShowForm(true);
   }
 
-  async function handleFileChange(e) {
+  async function onPickFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setUploadingImage(true);
+    setBusyImg(true);
     try {
-      const compressedDataUrl = await readAndCompressImage(file);
-      setForm((prev) => ({ ...prev, imageUrl: compressedDataUrl }));
-      showMessage("Photo attached.");
+      const dataUrl = await compressFile(file);
+      setForm((prev) => ({ ...prev, imageUrl: dataUrl }));
+      notify("Photo ready.");
     } catch (err) {
-      console.error(err);
-      showMessage(err.message || "Could not attach photo.");
+      notify(err.message || "Photo error.");
     } finally {
-      setUploadingImage(false);
+      setBusyImg(false);
     }
   }
 
-  async function handleSaveProduct(e) {
+  async function onSave(e) {
     e.preventDefault();
-    if (!form.title.trim()) {
-      showMessage("Please enter a product title.");
-      return;
-    }
-    if (uploadingImage) {
-      showMessage("Please wait for the photo to finish processing.");
-      return;
-    }
-
+    if (!form.title.trim()) return notify("Enter a product title.");
+    if (busyImg) return notify("Wait for photo processing.");
     setSaving(true);
     try {
-      const payload = {
-        title: form.title.trim(),
-        category: form.category,
-        subLabel: form.subLabel.trim(),
-        details: form.details.trim(),
-        imageUrl: form.imageUrl.trim(),
-        productUrl: form.productUrl.trim(),
-      };
-
-      if (editingId) {
-        await updateDoc(doc(db, PRODUCTS_COLLECTION, editingId), payload);
-        showMessage("Product updated.");
+      const data = { title: form.title.trim(), category: form.category, subLabel: form.subLabel.trim(), details: form.details.trim(), imageUrl: form.imageUrl.trim(), productUrl: form.productUrl.trim() };
+      if (editId) {
+        await updateDoc(doc(db, COL, editId), data);
+        notify("Updated.");
       } else {
-        await addDoc(collection(db, PRODUCTS_COLLECTION), {
-          ...payload,
-          createdAt: Date.now(),
-        });
-        showMessage("Product added to collection.");
+        await addDoc(collection(db, COL), { ...data, createdAt: Date.now() });
+        notify("Added.");
       }
-
       setForm(emptyForm);
-      setEditingId(null);
+      setEditId(null);
       setShowForm(false);
-    } catch (err) {
-      console.error(err);
-      showMessage("Failed to save product.");
+    } catch {
+      notify("Save failed.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id) {
+  async function onDelete(id) {
     try {
-      await deleteDoc(doc(db, PRODUCTS_COLLECTION, id));
-      showMessage("Product deleted.");
-    } catch (err) {
-      console.error(err);
-      showMessage("Could not delete product.");
+      await deleteDoc(doc(db, COL, id));
+      notify("Deleted.");
+    } catch {
+      notify("Delete failed.");
     }
   }
 
-  const filteredProducts = products.filter((item) => {
-    const matchesCategory = category === "ALL" || item.category === category;
-    const term = search.trim().toLowerCase();
-    const matchesSearch =
-      !term ||
-      (item.title || "").toLowerCase().includes(term) ||
-      (item.subLabel || "").toLowerCase().includes(term);
-    return matchesCategory && matchesSearch;
+  const visible = products.filter((p) => {
+    const okCat = cat === "ALL" || p.category === cat;
+    const s = search.trim().toLowerCase();
+    const okSearch = !s || (p.title || "").toLowerCase().includes(s) || (p.subLabel || "").toLowerCase().includes(s);
+    return okCat && okSearch;
   });
 
-  const clothesCount = products.filter((p) => p.category === "CLOTHES").length;
-  const jewelleryCount = products.filter((p) => p.category === "JEWELLERY").length;
-
   return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        {toast && (
-          <div style={{ ...styles.card, backgroundColor: "#ecfdf5", borderColor: "#a7f3d0",
+    <div style={css.page}>
+      <div style={css.wrap}>
+        {msg && <div style={{ ...css.card, background: "#ecfdf5", padding: "10px 14px" }}>{msg}</div>}
+
+        <div style={css.between}>
+          <strong>CRYSTALLINE AURA</strong>
+          <div style={css.row}>
+            <button type="button" style={css.secondary} onClick={() => setView("boutique")}>Boutique</button>
+            <button type="button" style={css.primary} onClick={() => setView(userEmail ? "atelier" : "login")}>
+              {userEmail ? "Atelier" : "Atelier Login"}
+            </button>
+          </div>
+        </div>
+
+        {view === "boutique" && (
+          <>
+            <div style={{ marginBottom: "14px" }}>
+              <div style={{ fontSize: "13px", color: "#57534e", marginBottom: "10px" }}>{visible.length} curated finds</div>
+              <div style={{ ...css.row, marginBottom: "10px" }}>
+                {["ALL", "CLOTHES", "JEWELLERY"].map((c) => (
+                  <button key={c} type="button" style={cat === c ? css.primary : css.secondary} onClick={() => setCat(c)}>{c}</button>
+                ))}
+              </div>
+              <input type="text" placeholder="Search pieces..." value={search} onChange={(e) => setSearch(e.target.value)} style={css.field} />
+            </div>
+
+            {visible.length === 0 ? (
+              <div style={{ ...css.card, textAlign: "center", padding: "24px" }}>
+                <p style={{ margin: "0 0 12px 0", color: "#57534e" }}>No pieces found.</p>
+                <button type="button" style={css.primary} onClick={() => setView("login")}>Open Atelier</button>
+              </div>
+            ) : (
+              <div style={css.cards}>
+                {visible.map((item) => (
+                  <div key={item.id} style={css.itemCard}>
+                    {item.imageUrl ? <img src={item.imageUrl} alt={item.title} style={css.thumb} /> : <div style={{ ...css.thumb, display: "flex", alignItems: "center", justifyContent: "center", color: "#78716c", fontSize: "12px" }}>No image</div>}
+                    <div style={{ fontSize: "11px", color: "#78716c" }}>{item.category} {item.subLabel ? `• ${item.subLabel}` : ""}</div>
+                    <div style={{ fontWeight: 600, margin: "4px 0" }}>{item.title}</div>
+                    {item.details && <div style={{ fontSize: "13px", color: "#57534e", marginBottom: "8px" }}>{item.details}</div>}
+                    {item.productUrl && <a href={item.productUrl} target="_blank" rel="noreferrer" style={{ fontSize: "13px", fontWeight: 600, color: "#1c1917" }}>View Link</a>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {view === "login" && (
+          <form onSubmit={onLogin} style={css.card}>
+            <h2 style={{ marginTop: 0, marginBottom: "12px", fontSize: "19px" }}>The Atelier</h2>
+            <div style={css.stack}>
+              <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required style={css.field} />
+              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} style={css.field} />
+              <button type="submit" style={css.primary}>Sign In</button>
+            </div>
+          </form>
+        )}
+
+        {view === "atelier" && (
+          <>
+            <div style={css.card}>
+              <div style={{ ...css.between, marginBottom: 0 }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px 0", fontSize: "19px" }}>ATELIER MANAGER</h2>
+                  <div style={{ fontSize: "13px", color: "#57534e", wordBreak: "break-all" }}>{userEmail}</div>
+                </div>
+                <div style={css.row}>
+                  <button type="button" style={css.secondary} onClick={() => setView("boutique")}>Boutique</button>
+                  <button type="button" style={css.secondary} onClick={() => { setUserEmail(""); setShowForm(false); setView("boutique"); }}>Logout</button>
+                </div>
+              </div>
+            </div>
+
+            <div style={css.stats}>
+              <div style={css.stat}><div style={{ fontSize: "20px", fontWeight: 700 }}>{products.length}</div><div style={{ fontSize: "11px", color: "#78716c" }}>TOTAL</div></div>
+              <div style={css.stat}><div style={{ fontSize: "20px", fontWeight: 700 }}>{products.filter((p) => p.category === "CLOTHES").length}</div><div style={{ fontSize: "11px", color: "#78716c" }}>CLOTHES</div></div>
+              <div style={css.stat}><div style={{ fontSize: "20px", fontWeight: 700 }}>{products.filter((p) => p.category === "JEWELLERY").length}</div><div style={{ fontSize: "11px", color: "#78716c" }}>JEWELLERY</div></div>
+            </div>
+
+            <div style={css.between}>
+              <h3 style={{ margin: 0, fontSize: "17px" }}>Collection</h3>
+              <button type="button" style={css.primary} onClick={startAdd}>+ ADD PRODUCT</button>
+            </div>
+
+            {showForm && (
+              <form onSubmit={onSave} style={css.card}>
+                <h4 style={{ marginTop: 0, marginBottom: "12px" }}>{editId ? "Edit Product" : "Add Product"}</h4>
+                <div style={css.stack}>
+                  <input type="text" placeholder="Product title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} style={css.field} />
+                  <div style={css.grid2}>
+                    <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={css.field}>
+                      <option value="CLOTHES">CLOTHES</option>
+                      <option value="JEWELLERY">JEWELLERY</option>
+                    </select>
+                    <input type="text" placeholder="Sub-label (optional)" value={form.subLabel} onChange={(e) => setForm({ ...form, subLabel: e.target.value })} style={css.field} />
+                  </div>
+                  <textarea placeholder="Details (optional)" value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} style={css.area} />
+
+                  <div style={css.uploadBox}>
+                    <label style={{ fontSize: "13px", fontWeight: 600 }}>Upload File / Photo</label>
+                    <input type="file" accept="image/*" onChange={onPickFile} style={{ width: "100%", maxWidth: "100%", fontSize: "13px" }} />
+                    {busyImg && <div style={{ fontSize: "12px", color: "#57534e" }}>Processing...</div>}
+                    {form.imageUrl && (
+                      <div style={css.stack}>
+                        <img src={form.imageUrl} alt="Preview" style={css.preview} />
+                        <button type="button" style={{ ...css.secondary, alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px" }} onClick={() => setForm({ ...form, imageUrl: "" })}>Remove Photo</button>
+                      </div>
+                    )}
+                  </div>
+
+                  <input type="text" placeholder="Product link (optional)" value={form.productUrl} onChange={(e) => setForm({ ...form, productUrl: e.target.value })} style={css.field} />
+                  <div style={{ ...css.row, justifyContent: "flex-end" }}>
+                    <button type="button" style={css.secondary} onClick={() => { setShowForm(false); setEditId(null); setForm(emptyForm); }}>Cancel</button>
+                    <button type="submit" style={css.primary} disabled={saving || busyImg}>{saving ? "Saving..." : "Save"}</button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            <div style={css.cards}>
+              {products.map((item) => (
+                <div key={item.id} style={css.itemCard}>
+                  {item.imageUrl ? <img src={item.imageUrl} alt={item.title} style={css.thumb} /> : <div style={{ ...css.thumb, display: "flex", alignItems: "center", justifyContent: "center", color: "#78716c", fontSize: "12px" }}>No image</div>}
+                  <div style={{ fontWeight: 600, marginBottom: "4px" }}>{item.title}</div>
+                  <div style={{ fontSize: "12px", color: "#78716c", marginBottom: "10px" }}>{item.category}</div>
+                  <div style={css.row}>
+                    <button type="button" style={{ ...css.secondary, padding: "6px 12px", fontSize: "12px" }} onClick={() => startEdit(item)}>Edit</button>
+                    <button type="button" style={{ ...css.secondary, padding: "6px 12px", fontSize: "12px" }} onClick={() => onDelete(item.id)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
